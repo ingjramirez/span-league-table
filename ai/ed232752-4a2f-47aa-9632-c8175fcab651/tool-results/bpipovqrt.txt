@@ -1,0 +1,952 @@
+=========== tests/test_1974_75_season.py
+     1	"""The actual answer to the exercise, pinned down.
+     2	
+     3	These tests run the real 1974/75 results through the real CLI and assert on the
+     4	real table. They are the regression lock: if anyone changes the rules, the
+     5	parsing or the sort, the English First Division of 1974/75 changes shape and
+     6	these fail.
+     7	"""
+     8	
+     9	import csv
+    10	import io
+    11	from pathlib import Path
+    12	
+    13	from league_table.cli import EXIT_OK, main
+    14	
+    15	DATA = Path(__file__).resolve().parent.parent / "data"
+    16	
+    17	ROUNDS_1_TO_10 = DATA / "results_1974-75_rounds_1-10.csv"
+    18	PLAYED_BY_28_SEP = DATA / "results_1974-75_played_by_1974-09-28.csv"
+    19	
+    20	STANDINGS_AFTER_MATCHDAY_10 = DATA / "standings_1974-75_after_matchday_10.csv"
+    21	STANDINGS_AS_OF_28_SEP = DATA / "standings_1974-75_as_of_1974-09-28.csv"
+    22	
+    23	
+    24	def table_for(results: Path):
+    25	    """Run the CLI over a results file and return the parsed table rows."""
+    26	    out = io.StringIO()
+    27	    code = main([str(results)], stdout=out)
+    28	
+    29	    assert code == EXIT_OK
+    30	    return list(csv.DictReader(io.StringIO(out.getvalue())))
+    31	
+    32	
+    33	# --------------------------------------------------------------------------
+    34	# The submitted answer: the table after ten matchdays.
+    35	# --------------------------------------------------------------------------
+    36	
+    37	
+    38	def test_the_input_holds_every_match_of_the_first_ten_rounds():
+    39	    rows = list(csv.DictReader(ROUNDS_1_TO_10.open()))
+    40	
+    41	    # 22 clubs, 11 matches a round, 10 rounds.
+    42	    assert len(rows) == 110
+    43	    assert {row["round"] for row in rows} == {str(n) for n in range(1, 11)}
+    44	
+    45	
+    46	def test_every_club_has_played_exactly_ten_matches():
+    47	    table = table_for(ROUNDS_1_TO_10)
+    48	
+    49	    assert len(table) == 22
+    50	    assert {row["Played"] for row in table} == {"10"}
+    51	
+    52	
+    53	def test_ipswich_town_lead_the_first_division_after_ten_matchdays():
+    54	    top = table_for(ROUNDS_1_TO_10)[0]
+    55	
+    56	    assert top["Team"] == "Ipswich Town"
+    57	    assert top["Points"] == "16"
+    58	    assert (top["Won"], top["Drawn"], top["Lost"]) == ("8", "0", "2")
+    59	    assert (top["GoalsFor"], top["GoalsAgainst"]) == ("18", "6")
+    60	    assert top["GoalAverage"] == "3.000"
+    61	
+    62	
+    63	def test_the_full_top_ten_after_matchday_ten():
+    64	    table = table_for(ROUNDS_1_TO_10)
+    65	
+    66	    assert [(row["Team"], row["Points"]) for row in table[:10]] == [
+    67	        ("Ipswich Town", "16"),
+    68	        ("Newcastle United", "14"),
+    69	        ("Manchester City", "14"),
+    70	        ("Middlesbrough", "13"),
+    71	        ("Liverpool", "13"),
+    72	        ("Everton", "13"),
+    73	        ("Sheffield United", "13"),
+    74	        ("Derby County", "11"),
+    75	        ("Stoke City", "11"),
+    76	        ("Wolverhampton Wanderers", "11"),
+    77	    ]
+    78	
+    79	
+    80	# --------------------------------------------------------------------------
+    81	# The historical rule, visible in the real season.
+    82	# --------------------------------------------------------------------------
+    83	
+    84	
+    85	def test_goal_average_reorders_the_real_1974_75_table_against_goal_difference():
+    86	    """The rule is not academic: it moves clubs in the actual table.
+    87	
+    88	    Middlesbrough and Liverpool both finish matchday 10 on 13 points.
+    89	
+    90	        Middlesbrough  15 scored,  7 conceded -> average 2.143, difference +8
+    91	        Liverpool      17 scored,  8 conceded -> average 2.125, difference +9
+    92	
+    93	    Goal average puts Middlesbrough 4th and Liverpool 5th. Goal difference --
+    94	    the modern rule, and the wrong one for 1974/75 -- would swap them. This is
+    95	    the exercise's whole point, occurring in the submitted answer itself.
+    96	    """
+    97	    table = table_for(ROUNDS_1_TO_10)
+    98	    by_team = {row["Team"]: row for row in table}
+    99	
+   100	    boro, pool = by_team["Middlesbrough"], by_team["Liverpool"]
+   101	
+   102	    assert boro["Points"] == pool["Points"] == "13"
+   103	    assert int(boro["Position"]) < int(pool["Position"])  # goal average: Boro ahead
+   104	
+   105	    # And goal difference would have said the opposite.
+   106	    boro_difference = int(boro["GoalsFor"]) - int(boro["GoalsAgainst"])
+   107	    pool_difference = int(pool["GoalsFor"]) - int(pool["GoalsAgainst"])
+   108	    assert pool_difference > boro_difference
+   109	
+   110	
+   111	def test_goal_average_separates_three_clubs_that_goal_difference_would_tie():
+   112	    """The bottom three all end matchday 10 on 6 points AND -5 goal difference.
+   113	
+   114	        Tottenham Hotspur    12-17  -> difference -5, average 0.706
+   115	        Arsenal              10-15  -> difference -5, average 0.667
+   116	        Queens Park Rangers   8-13  -> difference -5, average 0.615
+   117	
+   118	    Goal difference cannot separate them at all. Goal average orders them
+   119	    cleanly, and that order is the one the 1974/75 table shows.
+   120	    """
+   121	    table = table_for(ROUNDS_1_TO_10)
+   122	    bottom_three = table[-3:]
+   123	
+   124	    assert [row["Team"] for row in bottom_three] == [
+   125	        "Tottenham Hotspur",
+   126	        "Arsenal",
+   127	        "Queens Park Rangers",
+   128	    ]
+   129	    assert {row["Points"] for row in bottom_three} == {"6"}
+   130	    assert {
+   131	        int(row["GoalsFor"]) - int(row["GoalsAgainst"]) for row in bottom_three
+   132	    } == {-5}  # identical on the modern rule
+   133	    assert [row["GoalAverage"] for row in bottom_three] == ["0.706", "0.667", "0.615"]
+   134	
+   135	
+   136	# --------------------------------------------------------------------------
+   137	# The alternative reading, also shipped: the table as it actually stood.
+   138	# --------------------------------------------------------------------------
+   139	
+   140	
+   141	def test_the_28_september_table_reflects_the_three_postponed_fixtures():
+   142	    """Three round-9 games were postponed and played in Dec 1974 / Apr 1975.
+   143	
+   144	    So on the evening of matchday 10, six clubs had played only nine games. This
+   145	    is the table as it truly stood, and the reason the submitted answer uses the
+   146	    matchday reading instead. See README.md.
+   147	    """
+   148	    table = table_for(PLAYED_BY_28_SEP)
+   149	    played_nine = {row["Team"] for row in table if row["Played"] == "9"}
+   150	
+   151	    assert played_nine == {
+   152	        "Newcastle United",
+   153	        "Middlesbrough",
+   154	        "Leicester City",
+   155	        "Leeds United",
+   156	        "Arsenal",
+   157	        "Tottenham Hotspur",
+   158	    }
+   159	    assert table[0]["Team"] == "Ipswich Town"  # top either way
+   160	
+   161	
+   162	# --------------------------------------------------------------------------
+   163	# The committed output files must match what the tool actually produces.
+   164	# --------------------------------------------------------------------------
+   165	
+   166	
+   167	def test_the_committed_output_files_are_what_the_tool_produces_today():
+   168	    for results, expected in (
+   169	        (ROUNDS_1_TO_10, STANDINGS_AFTER_MATCHDAY_10),
+   170	        (PLAYED_BY_28_SEP, STANDINGS_AS_OF_28_SEP),
+   171	    ):
+   172	        produced = io.StringIO()
+   173	
+   174	        assert main([str(results)], stdout=produced) == EXIT_OK
+   175	        assert produced.getvalue() == expected.read_text(), f"{expected.name} is stale"
+=========== tests/test_cli.py
+     1	"""The command line: filenames or stdin/stdout, and honest exit codes."""
+     2	
+     3	import io
+     4	import subprocess
+     5	import sys
+     6	
+     7	from league_table.cli import EXIT_INVALID_INPUT, EXIT_OK, main
+     8	
+     9	HEADER = "home_team,away_team,home_goals,away_goals\n"
+    10	RESULTS = HEADER + "Ipswich Town,Chelsea,3,1\nEverton,Arsenal,2,2\n"
+    11	
+    12	
+    13	def run(argv, stdin=""):
+    14	    """Run the CLI in-process, returning (exit code, stdout, stderr)."""
+    15	    out, err = io.StringIO(), io.StringIO()
+    16	    code = main(argv, stdin=io.StringIO(stdin), stdout=out, stderr=err)
+    17	    return code, out.getvalue(), err.getvalue()
+    18	
+    19	
+    20	# --------------------------------------------------------------------------
+    21	# The happy paths: every combination of stream and file.
+    22	# --------------------------------------------------------------------------
+    23	
+    24	
+    25	def test_reads_stdin_and_writes_stdout_when_given_no_filenames():
+    26	    code, out, err = run([], stdin=RESULTS)
+    27	
+    28	    assert code == EXIT_OK
+    29	    assert err == ""
+    30	    assert out.splitlines()[0].startswith("Position,Team,Played")
+    31	    assert "Ipswich Town" in out
+    32	
+    33	
+    34	def test_reads_a_named_input_file(tmp_path):
+    35	    source = tmp_path / "results.csv"
+    36	    source.write_text(RESULTS)
+    37	
+    38	    code, out, _ = run([str(source)])
+    39	
+    40	    assert code == EXIT_OK
+    41	    assert "Ipswich Town" in out
+    42	
+    43	
+    44	def test_writes_a_named_output_file(tmp_path):
+    45	    source = tmp_path / "results.csv"
+    46	    source.write_text(RESULTS)
+    47	    destination = tmp_path / "table.csv"
+    48	
+    49	    code, out, _ = run([str(source), "-o", str(destination)])
+    50	
+    51	    assert code == EXIT_OK
+    52	    assert out == ""  # nothing on stdout; it all went to the file
+    53	    assert destination.read_text().splitlines()[1].startswith("1,Ipswich Town")
+    54	
+    55	
+    56	def test_a_dash_means_stdin_explicitly():
+    57	    code, out, _ = run(["-"], stdin=RESULTS)
+    58	
+    59	    assert code == EXIT_OK
+    60	    assert "Ipswich Town" in out
+    61	
+    62	
+    63	def test_the_table_is_ordered_by_the_1974_75_rules():
+    64	    code, out, _ = run([], stdin=RESULTS)
+    65	
+    66	    teams = [line.split(",")[1] for line in out.splitlines()[1:]]
+    67	
+    68	    # Ipswich win (2pts); Everton and Arsenal draw (1pt each, 2/2 = 1.000 average
+    69	    # apiece, so alphabetical); Chelsea lose.
+    70	    assert teams == ["Ipswich Town", "Arsenal", "Everton", "Chelsea"]
+    71	
+    72	
+    73	def test_a_pretty_table_can_be_printed_instead_of_csv():
+    74	    code, out, _ = run(["--pretty"], stdin=RESULTS)
+    75	
+    76	    assert code == EXIT_OK
+    77	    lines = out.splitlines()
+    78	    assert lines[0].split() == ["Pos", "Team", "P", "W", "D", "L", "F", "A", "GAvg", "Pts"]
+    79	    assert "Ipswich Town" in lines[1]
+    80	    assert "," not in out  # it is aligned text, not CSV
+    81	
+    82	
+    83	# --------------------------------------------------------------------------
+    84	# Failure. A wrong answer is worse than no answer, so these must not exit 0.
+    85	# --------------------------------------------------------------------------
+    86	
+    87	
+    88	def test_malformed_input_is_reported_on_stderr_with_a_non_zero_exit_code():
+    89	    code, out, err = run([], stdin=HEADER + "Everton,Arsenal,two,2\n")
+    90	
+    91	    assert code == EXIT_INVALID_INPUT
+    92	    assert code != EXIT_OK
+    93	    assert out == ""  # no half-written table
+    94	    assert "line 2" in err
+    95	    assert "two" in err
+    96	
+    97	
+    98	def test_a_missing_input_file_is_reported_rather_than_crashing(tmp_path):
+    99	    code, out, err = run([str(tmp_path / "nope.csv")])
+   100	
+   101	    assert code == EXIT_INVALID_INPUT
+   102	    assert out == ""
+   103	    assert "nope.csv" in err
+   104	    assert "Traceback" not in err
+   105	
+   106	
+   107	def test_an_unwritable_output_path_is_reported_rather_than_crashing(tmp_path):
+   108	    source = tmp_path / "results.csv"
+   109	    source.write_text(RESULTS)
+   110	    unwritable = tmp_path / "no-such-directory" / "table.csv"
+   111	
+   112	    code, _, err = run([str(source), "-o", str(unwritable)])
+   113	
+   114	    assert code == EXIT_INVALID_INPUT
+   115	    assert "table.csv" in err
+   116	    assert "Traceback" not in err
+   117	
+   118	
+   119	def test_a_bad_output_file_is_not_left_half_written(tmp_path):
+   120	    source = tmp_path / "results.csv"
+   121	    source.write_text(HEADER + "Everton,Arsenal,2,2\nBurnley,Stoke City,oops,1\n")
+   122	    destination = tmp_path / "table.csv"
+   123	
+   124	    code, _, err = run([str(source), "-o", str(destination)])
+   125	
+   126	    assert code == EXIT_INVALID_INPUT
+   127	    assert "line 3" in err
+   128	    assert not destination.exists()  # nothing written at all
+   129	
+   130	
+   131	def test_an_empty_input_is_rejected():
+   132	    code, _, err = run([], stdin="")
+   133	
+   134	    assert code == EXIT_INVALID_INPUT
+   135	    assert "no header" in err.lower()
+   136	
+   137	
+   138	# --------------------------------------------------------------------------
+   139	# The real thing: a genuine subprocess, piping through the shell.
+   140	# --------------------------------------------------------------------------
+   141	
+   142	
+   143	def test_the_installed_command_works_as_a_unix_filter():
+   144	    completed = subprocess.run(
+   145	        [sys.executable, "-m", "league_table"],
+   146	        input=RESULTS,
+   147	        capture_output=True,
+   148	        text=True,
+   149	        check=False,
+   150	    )
+   151	
+   152	    assert completed.returncode == 0
+   153	    assert completed.stdout.splitlines()[1].startswith("1,Ipswich Town")
+   154	
+   155	
+   156	def test_the_installed_command_exits_non_zero_on_bad_input():
+   157	    completed = subprocess.run(
+   158	        [sys.executable, "-m", "league_table"],
+   159	        input=HEADER + "Everton,Arsenal,two,2\n",
+   160	        capture_output=True,
+   161	        text=True,
+   162	        check=False,
+   163	    )
+   164	
+   165	    assert completed.returncode != 0
+   166	    assert "line 2" in completed.stderr
+   167	
+   168	
+   169	def test_the_module_entry_point_exposes_main():
+   170	    """`python -m league_table` runs this module.
+   171	
+   172	    The two subprocess tests above prove it actually works end to end; coverage
+   173	    cannot see into a subprocess, so this imports it in-process as well. The
+   174	    `if __name__ == "__main__":` line itself is the one line in the codebase
+   175	    excluded from coverage -- it cannot run outside a real process launch.
+   176	    """
+   177	    import league_table.__main__ as entry_point
+   178	
+   179	    assert entry_point.main is main
+=========== tests/test_csvio.py
+     1	"""Reading results from CSV and writing the table back out.
+     2	
+     3	The parser is deliberately forgiving about columns it does not need and strict
+     4	about the ones it does. `round` and `date` are ignored, which is what keeps the
+     5	tool general: the same binary tabulates any set of results without knowing
+     6	anything about matchdays or the 1974/75 season.
+     7	"""
+     8	
+     9	import io
+    10	
+    11	import pytest
+    12	
+    13	from league_table.csvio import InvalidInput, read_matches, write_table
+    14	from league_table.table import build_table
+    15	
+    16	HEADER = "home_team,away_team,home_goals,away_goals\n"
+    17	
+    18	
+    19	def read(text):
+    20	    return read_matches(io.StringIO(text))
+    21	
+    22	
+    23	def fails(text):
+    24	    with pytest.raises(InvalidInput) as caught:
+    25	        read(text)
+    26	    return str(caught.value)
+    27	
+    28	
+    29	# --------------------------------------------------------------------------
+    30	# Reading well-formed results.
+    31	# --------------------------------------------------------------------------
+    32	
+    33	
+    34	def test_reads_one_match_per_line():
+    35	    matches = read(HEADER + "Ipswich Town,Chelsea,3,1\nEverton,Arsenal,2,2\n")
+    36	
+    37	    assert len(matches) == 2
+    38	    assert matches[0].home_team == "Ipswich Town"
+    39	    assert matches[0].away_team == "Chelsea"
+    40	    assert (matches[0].home_goals, matches[0].away_goals) == (3, 1)
+    41	    assert (matches[1].home_goals, matches[1].away_goals) == (2, 2)
+    42	
+    43	
+    44	def test_a_file_with_only_a_header_is_a_valid_empty_set_of_results():
+    45	    # Not an error: a league simply has not kicked off yet.
+    46	    assert read(HEADER) == []
+    47	
+    48	
+    49	def test_extra_columns_are_ignored():
+    50	    """`round` and `date` ride along in the data files but mean nothing here.
+    51	
+    52	    The tool must not know what a matchday is; it tabulates what it is handed.
+    53	    """
+    54	    matches = read(
+    55	        "round,date,home_team,away_team,home_goals,away_goals\n"
+    56	        "1,1974-08-17,Stoke City,Leeds United,3,0\n"
+    57	    )
+    58	
+    59	    assert len(matches) == 1
+    60	    assert matches[0].home_team == "Stoke City"
+    61	    assert matches[0].home_goals == 3
+    62	
+    63	
+    64	def test_column_order_does_not_matter():
+    65	    matches = read("away_goals,away_team,home_goals,home_team\n0,Leeds United,3,Stoke City\n")
+    66	
+    67	    assert matches[0].home_team == "Stoke City"
+    68	    assert (matches[0].home_goals, matches[0].away_goals) == (3, 0)
+    69	
+    70	
+    71	def test_headers_and_values_tolerate_surrounding_whitespace_and_case():
+    72	    matches = read(" Home_Team , AWAY_TEAM ,home_goals,away_goals\n Burnley , Everton ,1, 2\n")
+    73	
+    74	    assert matches[0].home_team == "Burnley"
+    75	    assert matches[0].away_team == "Everton"
+    76	    assert (matches[0].home_goals, matches[0].away_goals) == (1, 2)
+    77	
+    78	
+    79	def test_blank_lines_between_results_are_skipped():
+    80	    matches = read(HEADER + "Ipswich Town,Chelsea,3,1\n\n   \nEverton,Arsenal,2,2\n")
+    81	
+    82	    assert len(matches) == 2
+    83	
+    84	
+    85	def test_club_names_containing_commas_survive_csv_quoting():
+    86	    matches = read(HEADER + '"Bolton, Wanderers of",Chelsea,1,0\n')
+    87	
+    88	    assert matches[0].home_team == "Bolton, Wanderers of"
+    89	
+    90	
+    91	# --------------------------------------------------------------------------
+    92	# Rejecting malformed input. Every message must name the line at fault.
+    93	# --------------------------------------------------------------------------
+    94	
+    95	
+    96	def test_a_completely_empty_file_is_rejected():
+    97	    assert "no header" in fails("").lower()
+    98	
+    99	
+   100	def test_a_missing_required_column_is_rejected_and_named():
+   101	    message = fails("home_team,away_team,home_goals\nIpswich Town,Chelsea,3\n")
+   102	
+   103	    assert "away_goals" in message
+   104	
+   105	
+   106	def test_all_missing_columns_are_named_at_once():
+   107	    message = fails("home_team,away_team\nIpswich Town,Chelsea\n")
+   108	
+   109	    assert "home_goals" in message
+   110	    assert "away_goals" in message
+   111	
+   112	
+   113	def test_a_non_numeric_score_is_rejected_with_its_line_number():
+   114	    message = fails(HEADER + "Ipswich Town,Chelsea,3,1\nEverton,Arsenal,two,2\n")
+   115	
+   116	    assert "line 3" in message  # header is line 1
+   117	    assert "two" in message
+   118	
+   119	
+   120	def test_a_negative_score_is_rejected():
+   121	    message = fails(HEADER + "Everton,Arsenal,-1,2\n")
+   122	
+   123	    assert "line 2" in message
+   124	    assert "negative" in message.lower()
+   125	
+   126	
+   127	def test_a_missing_score_is_rejected():
+   128	    message = fails(HEADER + "Everton,Arsenal,,2\n")
+   129	
+   130	    assert "line 2" in message
+   131	
+   132	
+   133	def test_a_short_row_is_rejected():
+   134	    message = fails(HEADER + "Everton,Arsenal,1\n")
+   135	
+   136	    assert "line 2" in message
+   137	
+   138	
+   139	def test_a_blank_club_name_is_rejected():
+   140	    message = fails(HEADER + " ,Arsenal,1,2\n")
+   141	
+   142	    assert "line 2" in message
+   143	    assert "name" in message.lower()
+   144	
+   145	
+   146	def test_a_club_playing_itself_is_rejected():
+   147	    message = fails(HEADER + "Arsenal,Arsenal,1,1\n")
+   148	
+   149	    assert "line 2" in message
+   150	    assert "Arsenal" in message
+   151	
+   152	
+   153	# --------------------------------------------------------------------------
+   154	# Writing the table.
+   155	# --------------------------------------------------------------------------
+   156	
+   157	
+   158	def test_the_table_is_written_in_the_conventional_column_order():
+   159	    out = io.StringIO()
+   160	
+   161	    write_table(build_table(read(HEADER + "Ipswich Town,Chelsea,3,1\n")), out)
+   162	
+   163	    lines = out.getvalue().splitlines()
+   164	    assert lines[0] == (
+   165	        "Position,Team,Played,Won,Drawn,Lost,GoalsFor,GoalsAgainst,GoalAverage,Points"
+   166	    )
+   167	    assert lines[1] == "1,Ipswich Town,1,1,0,0,3,1,3.000,2"
+   168	    assert lines[2] == "2,Chelsea,1,0,0,1,1,3,0.333,0"
+   169	
+   170	
+   171	def test_an_empty_table_still_writes_its_header():
+   172	    out = io.StringIO()
+   173	
+   174	    write_table([], out)
+   175	
+   176	    assert out.getvalue().splitlines() == [
+   177	        "Position,Team,Played,Won,Drawn,Lost,GoalsFor,GoalsAgainst,GoalAverage,Points"
+   178	    ]
+   179	
+   180	
+   181	def test_the_goal_average_edge_cases_are_written_readably():
+   182	    out = io.StringIO()
+   183	
+   184	    write_table(build_table(read(HEADER + "Clean Sheets FC,Hapless United,1,0\n")), out)
+   185	
+   186	    body = out.getvalue()
+   187	    assert ",inf," in body  # conceded nothing
+   188	    assert ",0.000," in body  # scored nothing, conceded one
+   189	
+   190	
+   191	def test_written_output_can_be_read_back_as_text():
+   192	    # Round-trips through a stream without needing a file on disk.
+   193	    out = io.StringIO()
+   194	
+   195	    write_table(build_table(read(HEADER + "Everton,Arsenal,2,2\n")), out)
+   196	
+   197	    assert out.getvalue().count("\n") == 3  # header + two clubs
+=========== tests/test_rules_goal_average.py
+     1	"""Goal average: the 1974/75 tie-break, and the crux of this exercise.
+     2	
+     3	Goal average is a RATIO -- goals scored divided by goals conceded. It is not
+     4	goal difference (goals scored minus goals conceded), which did not replace it
+     5	in the Football League until 1976/77.
+     6	
+     7	The two rules do not merely differ in arithmetic; they can order the same two
+     8	clubs differently. `test_goal_average_and_goal_difference_disagree` below is
+     9	the proof that this codebase implements the historical rule. If someone
+    10	"modernises" the sort to goal difference, that test is what fails.
+    11	"""
+    12	
+    13	from fractions import Fraction
+    14	
+    15	import pytest
+    16	
+    17	from league_table.rules import goal_average
+    18	
+    19	
+    20	def test_goal_average_is_goals_scored_divided_by_goals_conceded():
+    21	    assert goal_average(goals_for=10, goals_against=5).value == Fraction(2, 1)
+    22	
+    23	
+    24	def test_a_better_ratio_ranks_higher():
+    25	    assert goal_average(10, 5) > goal_average(10, 6)
+    26	
+    27	
+    28	def test_equal_ratios_compare_equal_even_when_the_goal_tallies_differ():
+    29	    # 2/1 and 4/2 are the same average; the raw tallies are irrelevant.
+    30	    assert goal_average(2, 1) == goal_average(4, 2)
+    31	
+    32	
+    33	# --------------------------------------------------------------------------
+    34	# The load-bearing test.
+    35	# --------------------------------------------------------------------------
+    36	
+    37	
+    38	def test_goal_average_and_goal_difference_disagree():
+    39	    """Two clubs where the historical rule and the modern rule swap the order.
+    40	
+    41	        Rovers:  10 scored,  5 conceded -> average 2.00, difference +5
+    42	        United:  25 scored, 19 conceded -> average 1.32, difference +6
+    43	
+    44	    Goal AVERAGE ranks Rovers above United. Goal DIFFERENCE would rank United
+    45	    above Rovers. Level on points, 1974/75 puts Rovers first.
+    46	    """
+    47	    rovers_for, rovers_against = 10, 5
+    48	    united_for, united_against = 25, 19
+    49	
+    50	    rovers = goal_average(rovers_for, rovers_against)
+    51	    united = goal_average(united_for, united_against)
+    52	
+    53	    # The historical rule: Rovers ahead.
+    54	    assert rovers > united
+    55	
+    56	    # The modern rule would have said the opposite. Asserting this explicitly
+    57	    # keeps the test honest -- it proves the two rules really do disagree here,
+    58	    # so the assertion above cannot pass by coincidence.
+    59	    rovers_difference = rovers_for - rovers_against
+    60	    united_difference = united_for - united_against
+    61	    assert united_difference > rovers_difference
+    62	
+    63	
+    64	# --------------------------------------------------------------------------
+    65	# Edge cases. A ratio has two of them, and both are deliberate decisions.
+    66	# --------------------------------------------------------------------------
+    67	
+    68	
+    69	def test_conceding_nothing_ranks_above_every_finite_average():
+    70	    """A club that has conceded no goals divides by zero.
+    71	
+    72	    The ratio is unbounded, so it outranks any finite average, however large.
+    73	    """
+    74	    unbeaten_defence = goal_average(goals_for=3, goals_against=0)
+    75	
+    76	    assert unbeaten_defence > goal_average(1000, 1)
+    77	    assert unbeaten_defence.is_infinite
+    78	
+    79	
+    80	def test_all_infinite_averages_compare_equal():
+    81	    # 5/0 and 3/0 are both simply undefined-and-unbounded; neither is "better".
+    82	    assert goal_average(5, 0) == goal_average(3, 0)
+    83	
+    84	
+    85	def test_no_goals_either_way_is_undefined_and_ranks_below_every_finite_average():
+    86	    """0 scored and 0 conceded is 0/0 -- undefined, not zero.
+    87	
+    88	    This is also the case for a club that has played no games at all. It cannot
+    89	    outrank a club that has actually achieved a ratio, so it sorts last.
+    90	    """
+    91	    undefined = goal_average(goals_for=0, goals_against=0)
+    92	
+    93	    assert undefined.is_undefined
+    94	    assert undefined < goal_average(0, 1)  # even a club that only conceded
+    95	    assert undefined < goal_average(1, 1000)
+    96	
+    97	
+    98	def test_undefined_averages_compare_equal():
+    99	    assert goal_average(0, 0) == goal_average(0, 0)
+   100	
+   101	
+   102	def test_undefined_ranks_below_infinite():
+   103	    assert goal_average(0, 0) < goal_average(1, 0)
+   104	
+   105	
+   106	def test_scoring_nothing_but_conceding_is_a_real_ratio_of_zero():
+   107	    # 0/5 is a legitimate average of zero -- distinct from the 0/0 undefined
+   108	    # case above, and it still outranks undefined.
+   109	    scored_nothing = goal_average(0, 5)
+   110	
+   111	    assert scored_nothing.value == Fraction(0, 1)
+   112	    assert not scored_nothing.is_undefined
+   113	    assert scored_nothing > goal_average(0, 0)
+   114	
+   115	
+   116	# --------------------------------------------------------------------------
+   117	# Exactness.
+   118	# --------------------------------------------------------------------------
+   119	
+   120	
+   121	def test_averages_are_exact_and_do_not_collapse_under_float_rounding():
+   122	    """Goal average is a Fraction, not a float.
+   123	
+   124	    Both of these are 0.3333333333333333 in IEEE-754 double precision, so a
+   125	    float implementation would call them equal and mis-order the clubs. Exactly,
+   126	    1/3 is the greater.
+   127	    """
+   128	    exact_third = goal_average(1, 3)
+   129	    just_under_a_third = goal_average(33_333_333_333_333_333, 100_000_000_000_000_000)
+   130	
+   131	    assert float(exact_third.value) == float(just_under_a_third.value)  # floats agree
+   132	    assert exact_third > just_under_a_third  # fractions do not
+   133	
+   134	
+   135	# --------------------------------------------------------------------------
+   136	# Presentation.
+   137	# --------------------------------------------------------------------------
+   138	
+   139	
+   140	def test_a_finite_average_formats_to_three_decimal_places():
+   141	    assert format(goal_average(14, 11)) == "1.273"
+   142	    assert format(goal_average(18, 6)) == "3.000"
+   143	
+   144	
+   145	def test_the_edge_cases_format_readably():
+   146	    assert format(goal_average(3, 0)) == "inf"
+   147	    assert format(goal_average(0, 0)) == "n/a"
+   148	
+   149	
+   150	def test_str_matches_the_formatted_value():
+   151	    assert str(goal_average(14, 11)) == "1.273"
+   152	    assert str(goal_average(3, 0)) == "inf"
+   153	
+   154	
+   155	def test_repr_is_readable():
+   156	    assert repr(goal_average(18, 6)) == "GoalAverage(3.000)"
+   157	
+   158	
+   159	# --------------------------------------------------------------------------
+   160	# Behaving like a well-mannered value object.
+   161	# --------------------------------------------------------------------------
+   162	
+   163	
+   164	def test_equal_averages_hash_alike():
+   165	    # Lets averages be used in sets and as dict keys without surprises.
+   166	    assert hash(goal_average(2, 1)) == hash(goal_average(4, 2))
+   167	    assert len({goal_average(2, 1), goal_average(4, 2), goal_average(1, 2)}) == 2
+   168	
+   169	
+   170	def test_comparing_with_a_non_average_is_not_equal_rather_than_an_error():
+   171	    assert goal_average(2, 1) != "2.000"
+   172	    assert goal_average(2, 1) != 2
+   173	
+   174	
+   175	def test_ordering_against_a_non_average_is_a_type_error():
+   176	    # Refusing the comparison is safer than inventing an ordering for it.
+   177	    with pytest.raises(TypeError):
+   178	        goal_average(2, 1) < 2  # noqa: B015
+=========== tests/test_rules_points.py
+     1	"""The 1974/75 points system: 2 for a win, 1 for a draw, 0 for a loss.
+     2	
+     3	Three points for a win was not introduced in England until 1981/82, so a `3`
+     4	appearing anywhere in these expectations is a bug, not an update.
+     5	"""
+     6	
+     7	import pytest
+     8	
+     9	from league_table.rules import POINTS_FOR_DRAW, POINTS_FOR_WIN, points_for_result
+    10	
+    11	
+    12	def test_a_win_is_worth_two_points():
+    13	    assert points_for_result(goals_for=3, goals_against=1) == 2
+    14	
+    15	
+    16	def test_a_draw_is_worth_one_point():
+    17	    assert points_for_result(goals_for=2, goals_against=2) == 1
+    18	
+    19	
+    20	def test_a_loss_is_worth_no_points():
+    21	    assert points_for_result(goals_for=0, goals_against=1) == 0
+    22	
+    23	
+    24	def test_a_goalless_draw_is_still_worth_one_point():
+    25	    assert points_for_result(goals_for=0, goals_against=0) == 1
+    26	
+    27	
+    28	@pytest.mark.parametrize(
+    29	    ("goals_for", "goals_against", "expected"),
+    30	    [(1, 0, 2), (0, 1, 0), (5, 4, 2), (4, 5, 0), (9, 9, 1)],
+    31	)
+    32	def test_points_across_a_range_of_scorelines(goals_for, goals_against, expected):
+    33	    assert points_for_result(goals_for, goals_against) == expected
+    34	
+    35	
+    36	def test_the_win_and_draw_values_are_the_historical_ones():
+    37	    # Guards against a well-meaning "modernisation" of the constants.
+    38	    assert (POINTS_FOR_WIN, POINTS_FOR_DRAW) == (2, 1)
+=========== tests/test_table.py
+     1	"""Building the standing table from a list of match results.
+     2	
+     3	Pure domain: these tests never touch the filesystem, a CSV, or the CLI.
+     4	"""
+     5	
+     6	from league_table.models import Match
+     7	from league_table.table import build_table
+     8	
+     9	
+    10	def played(home, away, home_goals, away_goals):
+    11	    return Match(
+    12	        home_team=home,
+    13	        away_team=away,
+    14	        home_goals=home_goals,
+    15	        away_goals=away_goals,
+    16	    )
+    17	
+    18	
+    19	def positions(table):
+    20	    return [row.team for row in table]
+    21	
+    22	
+    23	# --------------------------------------------------------------------------
+    24	# Aggregation.
+    25	# --------------------------------------------------------------------------
+    26	
+    27	
+    28	def test_no_matches_gives_an_empty_table():
+    29	    assert build_table([]) == []
+    30	
+    31	
+    32	def test_a_single_match_records_a_win_and_a_loss():
+    33	    table = build_table([played("Ipswich Town", "Chelsea", 3, 1)])
+    34	
+    35	    winner, loser = table
+    36	
+    37	    assert (winner.team, winner.played, winner.won, winner.drawn, winner.lost) == (
+    38	        "Ipswich Town",
+    39	        1,
+    40	        1,
+    41	        0,
+    42	        0,
+    43	    )
+    44	    assert (winner.goals_for, winner.goals_against, winner.points) == (3, 1, 2)
+    45	
+    46	    assert (loser.team, loser.played, loser.won, loser.drawn, loser.lost) == (
+    47	        "Chelsea",
+    48	        1,
+    49	        0,
+    50	        0,
+    51	        1,
+    52	    )
+    53	    assert (loser.goals_for, loser.goals_against, loser.points) == (1, 3, 0)
+    54	
+    55	
+    56	def test_a_draw_gives_both_clubs_a_point():
+    57	    table = build_table([played("Arsenal", "Everton", 2, 2)])
+    58	
+    59	    assert [(row.team, row.drawn, row.points) for row in table] == [
+    60	        ("Arsenal", 1, 1),
+    61	        ("Everton", 1, 1),
+    62	    ]
+    63	
+    64	
+    65	def test_a_club_accumulates_across_home_and_away_matches():
+    66	    table = build_table(
+    67	        [
+    68	            played("Liverpool", "Luton Town", 2, 0),  # home win
+    69	            played("Derby County", "Liverpool", 1, 1),  # away draw
+    70	            played("Liverpool", "Leeds United", 0, 3),  # home loss
+    71	        ]
+    72	    )
+    73	
+    74	    liverpool = next(row for row in table if row.team == "Liverpool")
+    75	
+    76	    assert (liverpool.played, liverpool.won, liverpool.drawn, liverpool.lost) == (3, 1, 1, 1)
+    77	    assert (liverpool.goals_for, liverpool.goals_against) == (3, 4)
+    78	    assert liverpool.points == 3  # one win (2) + one draw (1)
+    79	
+    80	
+    81	# --------------------------------------------------------------------------
+    82	# Ordering.
+    83	# --------------------------------------------------------------------------
+    84	
+    85	
+    86	def test_clubs_are_ordered_by_points_descending():
+    87	    table = build_table(
+    88	        [
+    89	            played("Stoke City", "Burnley", 1, 0),  # Stoke 2pts; Burnley 0
+    90	            played("Burnley", "Carlisle United", 1, 1),  # a point each
+    91	        ]
+    92	    )
+    93	
+    94	    # Stoke top on 2 points. Burnley and Carlisle both finish on 1, and the
+    95	    # goal average splits them: Carlisle 1/1 = 1.000, Burnley 1/2 = 0.500.
+    96	    assert positions(table) == ["Stoke City", "Carlisle United", "Burnley"]
+    97	    assert [row.points for row in table] == [2, 1, 1]
+    98	
+    99	
+   100	def test_positions_are_numbered_from_one():
+   101	    table = build_table(
+   102	        [
+   103	            played("Stoke City", "Burnley", 1, 0),
+   104	            played("Carlisle United", "Chelsea", 1, 0),
+   105	        ]
+   106	    )
+   107	
+   108	    assert [row.position for row in table] == [1, 2, 3, 4]
+   109	
+   110	
+   111	# --------------------------------------------------------------------------
+   112	# The load-bearing test, at table level.
+   113	# --------------------------------------------------------------------------
+   114	
+   115	
+   116	def test_clubs_level_on_points_are_separated_by_goal_average_not_goal_difference():
+   117	    """The historical rule, exercised through the real sort.
+   118	
+   119	    Both clubs finish on 2 points from one win each.
+   120	
+   121	        Rovers beat a minnow    10-5  -> average 2.00, difference +5
+   122	        United won a shootout   25-19 -> average 1.32, difference +6
+   123	
+   124	    Goal average puts Rovers first. Goal difference would put United first.
+   125	    1974/75 used goal average, so Rovers top the table.
+   126	    """
+   127	    table = build_table(
+   128	        [
+   129	            played("Rovers", "Minnows", 10, 5),
+   130	            played("United", "Wanderers", 25, 19),
+   131	        ]
+   132	    )
+   133	
+   134	    assert positions(table)[:2] == ["Rovers", "United"]
+   135	
+   136	    rovers, united = table[0], table[1]
+   137	    assert rovers.points == united.points == 2
+   138	
+   139	    # Goal average agrees with the order above...
+   140	    assert rovers.goal_average > united.goal_average
+   141	
+   142	    # ...and goal difference would have reversed it. Asserting the disagreement
+   143	    # explicitly is what stops this test passing by accident: if someone swaps
+   144	    # the sort to the modern rule, the ordering assertion above fails.
+   145	    rovers_difference = rovers.goals_for - rovers.goals_against
+   146	    united_difference = united.goals_for - united.goals_against
+   147	    assert united_difference > rovers_difference
+   148	
+   149	
+   150	def test_a_club_that_has_conceded_nothing_outranks_a_club_with_a_finite_average():
+   151	    # Level on points; the clean sheet gives an unbounded average.
+   152	    table = build_table(
+   153	        [
+   154	            played("Clean Sheets FC", "Hapless United", 1, 0),
+   155	            played("Leaky Rovers", "Feeble City", 9, 1),
+   156	        ]
+   157	    )
+   158	
+   159	    assert positions(table)[:2] == ["Clean Sheets FC", "Leaky Rovers"]
+   160	    assert table[0].goal_average.is_infinite
+   161	
+   162	
+   163	def test_clubs_level_on_points_and_goal_average_fall_back_to_alphabetical_order():
+   164	    """The Football League had no further tie-break in 1974/75.
+   165	
+   166	    Clubs level on both points and goal average genuinely shared the position.
+   167	    We order them alphabetically so the output is deterministic, and say so in
+   168	    the README rather than inventing a historical rule that did not exist.
+   169	    """
+   170	    table = build_table(
+   171	        [
+   172	            played("Zebras", "Wolves", 2, 1),
+   173	            played("Aardvarks", "Badgers", 2, 1),
+   174	        ]
+   175	    )
+   176	
+   177	    assert positions(table)[:2] == ["Aardvarks", "Zebras"]
+   178	    assert table[0].points == table[1].points
+   179	    assert table[0].goal_average == table[1].goal_average

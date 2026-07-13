@@ -1,0 +1,1 @@
+{"agentType":"span-red-team","description":"Red-team SPAN reviewer","name":"span-red-team","spawnDepth":0,"taskKind":"in_process_teammate","teamName":"session-ed232752","color":"green","planModeRequired":false,"model":"claude-opus-4-8","permissionMode":"bypassPermissions"}
