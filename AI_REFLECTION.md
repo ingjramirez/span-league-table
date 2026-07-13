@@ -1,5 +1,7 @@
 # AI Reflection
 
+ "Drafted with Claude and rewritten by me over several passes; the judgements are mine."
+
 ## The coverage gate made the AI delete a bug into existence
 
 I asked for TDD and a 100% branch coverage gate. Those two things together caused the most
