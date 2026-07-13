@@ -1,0 +1,23 @@
+Position,Team,Played,Won,Drawn,Lost,GoalsFor,GoalsAgainst,GoalAverage,Points
+1,Ipswich Town,10,8,0,2,18,6,3.000,16
+2,Newcastle United,10,6,2,2,19,14,1.357,14
+3,Manchester City,10,6,2,2,14,11,1.273,14
+4,Middlesbrough,10,5,3,2,15,7,2.143,13
+5,Liverpool,10,6,1,3,17,8,2.125,13
+6,Everton,10,4,5,1,14,11,1.273,13
+7,Sheffield United,10,5,3,2,14,14,1.000,13
+8,Derby County,10,3,5,2,16,13,1.231,11
+9,Stoke City,10,4,3,3,13,11,1.182,11
+10,Wolverhampton Wanderers,10,3,5,2,12,11,1.091,11
+11,Carlisle United,10,4,2,4,8,8,1.000,10
+12,West Ham United,10,4,1,5,20,18,1.111,9
+13,Burnley,10,4,1,5,17,18,0.944,9
+14,Leeds United,10,3,2,5,14,15,0.933,8
+15,Birmingham City,10,3,2,5,12,17,0.706,8
+16,Coventry City,10,2,4,4,11,17,0.647,8
+17,Luton Town,10,1,5,4,11,16,0.688,7
+18,Leicester City,10,2,3,5,13,20,0.650,7
+19,Chelsea,10,2,3,5,10,18,0.556,7
+20,Tottenham Hotspur,10,3,0,7,12,17,0.706,6
+21,Arsenal,10,2,2,6,10,15,0.667,6
+22,Queens Park Rangers,10,1,4,5,8,13,0.615,6
