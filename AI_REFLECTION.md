@@ -1,98 +1,70 @@
 # AI Reflection
 
-## Where the AI went wrong: it deleted code that coverage said was dead
+## The coverage gate made the AI delete a bug into existence
 
-We worked test-first and I asked for 100% branch coverage as a gate. That combination
-produced the most instructive failure of the session, and it was caused by the coverage
-target itself.
+I asked for TDD and a 100% branch coverage gate. Those two things together caused the most
+interesting failure of the session.
 
-While building the sort, the coverage report flagged one uncovered line: the `__eq__`
-method on a small private wrapper class used to sort goal averages in descending order.
-The AI reasoned — plausibly, and out loud — that `sorted()` only ever calls `__lt__`, so
-`__eq__` was dead code, and deleted it rather than annotate it with a `# pragma: no cover`.
-That reasoning is wrong, and subtly so. Python compares tuples element by element, using
-`==` to decide whether to move on to the next element. With `__eq__` gone, two clubs with
-*identical* goal averages compared as unequal (falling back to identity), so the sort never
-reached the third element of the key — the club name — and the alphabetical tie-break
-became silently unreachable. Nothing would have crashed. The table would just have been
-quietly non-deterministic for clubs level on both points and goal average.
+Partway through the sort, the coverage report flagged a method as never executed. Claude
+reasoned that nothing would ever call it, concluded it was dead, and deleted it. The reasoning
+sounded fine and was wrong. That method was quietly holding up the tie-break between clubs
+level on points and goal average, and without it the order of those clubs became arbitrary.
+Nothing crashed. The table just would have been slightly wrong in a way nobody would ever have
+noticed.
 
-The test I had insisted on writing first caught it in about ten seconds, and that is the
-whole point. Had we written the code first and the tests after, I am fairly sure the test
-would have been written to match the behaviour rather than the rule, and the bug would have
-shipped green. What I took from it: an uncovered line is a *question*, not a verdict. It
-means "no test exercises this", which is exactly as consistent with "this is load-bearing
-and untested" as with "this is dead". The AI collapsed that ambiguity in the direction that
-made the number go up. I now treat a coverage gate as something that generates work, not
-something that licenses deletion — and the restored `__eq__` carries a comment explaining
-why it exists, so the next person (or model) doesn't make the same cut.
+The test I'd written first caught it in about ten seconds, which is the whole argument for TDD
+in one incident. If we'd written the code first, I'm fairly sure the test would have been
+written to match whatever the code did, and it would have shipped green.
 
-A smaller version of the same thing happened twice more. The AI wrote a test asserting
-Burnley would finish above Carlisle; the code disagreed, and the code was right — goal
-average separated them and the *test* was the thing that was wrong. Writing tests first
-does not make them correct, it just makes the disagreement surface early enough to be
-interesting.
+What I took from it is narrower than "TDD good". An uncovered line is a question, not an
+answer. It tells you no test touches this, which is just as consistent with "this is
+load-bearing and nobody tested it" as with "this is dead". Claude resolved that ambiguity in
+the direction that made the number go up, which is what you'd expect from anything you hand a
+target to. I stopped treating the coverage gate as permission to delete code and started
+treating it as a list of things to go and test.
 
-## Where I pushed back: "the 10th week" is not the 10th matchday, necessarily
+A smaller version happened twice, the other way round: Claude wrote a test, the code disagreed,
+and the code was right. Writing the test first doesn't make it correct. It just means you find
+out early.
 
-The AI's first instinct — and a reasonable one — was to read "the 10th week of the season"
-as "after 10 matchdays" and get on with it. I pushed on that, because the two readings only
-coincide if fixtures fall one per week, and I did not believe they had. Forcing the actual
-dates out of the data proved they had not: the League played extra midweek rounds in the
-opening fortnight, so all 22 clubs had played 10 games by 28 September 1974, only six
-calendar weeks in, and the literal 10th calendar week lands in *late October*, by which
-point clubs had played thirteen or fourteen. The ambiguity was real and worth about ten
-minutes of argument.
+## Pushing back on "the 10th week"
 
-I settled on the matchday reading, and the README argues it on three grounds rather than
-asserting it. But the more useful decision was structural: since the tool is general and
-the week lives in the data rather than the code, both cut-offs cost nothing to ship, so
-both ship — the rounds 1–10 table as the submitted answer, and the "as it actually stood on
-28 September" table alongside it, six clubs still on nine games because their round-9
-fixtures were postponed to December and April. Making the tool ignorant of matchdays turned
-a judgement call I could have got wrong into a judgement call I did not have to make
-irreversibly.
+Claude's first instinct was to read "the 10th week of the season" as ten matchdays and get on
+with it. I didn't buy it, because that only works if fixtures land one per week, and I doubted
+they had. They hadn't. The League played extra midweek rounds early on, so every club had ten
+games in by late September, while the literal tenth calendar week doesn't arrive until the
+middle of October. The two readings are almost a month apart.
 
-## What I would not let the AI skip: proving the data, not just the code
+I went with the matchday reading, but the decision that mattered was structural. The tool
+doesn't know what a week is. It tabulates whatever file you give it, and the cut-off lives in
+the data. So all three readings cost nothing to ship, and all three ship. A judgement call I
+could have got wrong became one I didn't have to make irreversibly.
 
-The historical rules were verified against cited sources before the sort was written, which
-is the part of this exercise that is actually load-bearing — a beautifully tested
-implementation of *goal difference* would be a wrong answer, and it would be wrong silently.
-But I also wanted the *data* proved, not just the rules. The results were scraped, and
-scraped through a third-party text proxy at that, because the archive blocks plain HTTP
-clients; that is transport, not provenance, and it is exactly the sort of detail that gets
-waved through. So the computed table was cross-checked row by row against two independent
-sources — worldfootball's own matchday-10 table and 11v11's date-based table for 28
-September 1974 — and they agree on every club's played, won, drawn, lost, goals for, goals
-against and points. The six clubs where 11v11 disagrees are precisely the six affected by
-the postponements, each differing by exactly one result with no leftover goals. The two
-datasets corroborate each other.
+The calendar-week file turned out to be the most useful thing in the repo, because 11v11
+publishes the real table for that date with its own goal average column, and ours reproduces it
+exactly. That single comparison tests the data, the rules and the sort all at once.
 
-And then I got caught by exactly the thing I had just congratulated myself on avoiding.
+## The part I'm least pleased about
 
-The verification agent reported that worldfootball *displays* its table sorted by goal
-difference, which would neatly explain why Liverpool sits 7th there and 4th in ours. It is a
-lovely story — the historical rule, visible in the wild, on the very season the exercise
-asks about — and I wrote it into both the README and this document without opening the page.
-A second review checked it and it is false: in worldfootball's 13-point block, Liverpool are
-*last* on a goal difference of +9, below Middlesbrough (+8), Everton (+3) and Sheffield
-United (0). Goal-difference sorting would have put them first in that block. Whatever
-explains their row order, it is not the tidy story I told, and I had cited the page that
-disproves it.
+I made Claude verify the historical rules against real sources before writing the sort, and
+cross-check the scraped results against two archives rather than trusting the scrape. The rules
+are the trap in this exercise: a beautifully tested implementation of goal difference is a wrong
+answer, and it's wrong silently.
 
-The data cross-check itself survived — the numbers do agree, club by club, and that is what
-the verification was for. What did not survive was my explanation of someone else's table,
-which I had accepted from a model summary because it was pleasing and confirmed the point I
-wanted to make. That is the whole failure mode this exercise is about, committed by me, in
-the paragraph claiming I don't commit it. I have removed the claim rather than patch it,
-because I do not know what worldfootball sorts by and have no need to.
+Then I fell for exactly the thing I'd been guarding against.
 
-The lesson I actually take from the session is narrower than "verify things". It is:
-**an AI's summary of a source is not the source**, and the more a claim flatters your
-argument, the more it deserves the click. The match data got that treatment and held up. My
-favourite sentence in the write-up did not get it, and was wrong.
+An agent told me worldfootball sorts its table by goal difference, which would neatly explain
+why the two tables disagree about Liverpool. Nice story. The old rule, visible in the wild, on
+the very season the exercise is about. I liked it enough to put it in the README and in this
+document, and I never opened the page. A later review did, and it's false. Whatever explains
+their row order, it isn't that, and the page I cited disproves it.
 
-It is also why the load-bearing test in this repo does not merely assert an ordering: it
-asserts that goal average and goal difference *disagree* about the pair, so it cannot pass
-by coincidence, and anyone who "modernises" the sort gets a red test rather than a plausible
-table.
+The data cross-check itself held up, which is what it was actually for. What didn't hold up was
+my explanation of somebody else's table, taken from a model's summary because it was pleasing
+and it confirmed the point I wanted to make. I deleted the claim rather than patch it. I don't
+know what worldfootball sorts by and I don't need to.
+
+So the lesson is smaller and more annoying than "verify things". A model's summary of a source
+is not the source, and the more a claim flatters your argument, the more it deserves the click.
+The match data got that scrutiny and survived. My favourite sentence in the write-up didn't,
+and was wrong.
