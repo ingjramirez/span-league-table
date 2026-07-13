@@ -90,3 +90,26 @@ It's that I never asked what my evidence would look like if I were wrong. The mu
 reviewer ran took about a minute and would have told me on day one that my headline validation
 was blind to the thing it claimed to prove. It's now a test in the repo, asserting that those
 two tables *can't* tell the rules apart, so nobody rebuilds the same false confidence later.
+
+And then, at the very end, a third one — the worst of them, because it was a rule and not a
+story.
+
+Going back to the Wikipedia page to check that our two quotes were verbatim, I read further
+down it than I ever had. Under the 1974/75 First Division table there is a line I'd never
+looked at: *Rules for classification: 1) Points; 2) Goal average; 3) Goals scored.* There is a
+third rule. Clubs level on points and goal average are separated by goals scored. Our code
+didn't do that — it broke those ties alphabetically — and the README stated confidently that
+the League had no third rule at all, two paragraphs below a quotation from the page that says
+otherwise.
+
+It survived because it was invisible. In all three of our tables the two rules produce the same
+order, so every test passed and both archive comparisons still matched. And when I'd noticed
+earlier that 11v11's tied clubs could be explained by either goals-scored or alphabetical
+order, I wrote a careful little paragraph saying the data couldn't tell them apart — instead of
+spending thirty seconds finding out which rule was real. I mistook hedging for rigour. The
+answer was already on a page I had quoted from twice.
+
+It's fixed, with a test where goals-scored and alphabetical disagree, so it can't pass by
+accident. The tables didn't change. But that's luck, and luck isn't a method. Three times now
+the same shape of error: something I believed because it sounded right and never poked. The
+code was fine every time. The confidence was the bug.

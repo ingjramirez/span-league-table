@@ -167,12 +167,14 @@ def test_a_club_that_has_conceded_nothing_outranks_a_club_with_a_finite_average(
     assert table[0].goal_average.is_infinite
 
 
-def test_clubs_level_on_points_and_goal_average_fall_back_to_alphabetical_order():
-    """The Football League had no further tie-break in 1974/75.
+def test_clubs_identical_on_all_three_rules_fall_back_to_alphabetical_order():
+    """The last resort, and the only part of the sort that is not historical.
 
-    Clubs level on both points and goal average genuinely shared the position.
-    We order them alphabetically so the output is deterministic, and say so in
-    the README rather than inventing a historical rule that did not exist.
+    These two clubs are identical on every rule the Football League had: same
+    points, same goal average, same goals scored. The League would simply have
+    shown them as sharing the position. We order them by name so the output is
+    deterministic rather than at the mercy of dict insertion order -- a
+    presentation choice, and flagged as one in README.md.
     """
     table = build_table(
         [
@@ -184,3 +186,40 @@ def test_clubs_level_on_points_and_goal_average_fall_back_to_alphabetical_order(
     assert positions(table)[:2] == ["Aardvarks", "Zebras"]
     assert table[0].points == table[1].points
     assert table[0].goal_average == table[1].goal_average
+    assert table[0].goals_for == table[1].goals_for
+
+
+def test_clubs_level_on_points_and_goal_average_are_separated_by_goals_scored():
+    """The third rule, and it is a real one -- we nearly missed it.
+
+    Wikipedia's 1974-75 Football League page states the classification rules for
+    this exact season under the First Division table:
+
+        Rules for classification: 1) Points; 2) Goal average; 3) Goals scored
+
+    So clubs level on points AND goal average are separated by goals scored. An
+    earlier version of this code invented an alphabetical tie-break here and the
+    README asserted, wrongly, that the League had no third rule at all.
+
+    Both clubs below finish on 2 points with an identical goal average of 2.000.
+    Zebras scored more, so Zebras go above -- and note that the alphabetical
+    fallback would have said the opposite, which is what makes this test a proof
+    rather than a coincidence.
+    """
+    table = build_table(
+        [
+            played("Zebras", "Minnows", 4, 2),  # 2 pts, 4/2 = 2.000, scored 4
+            played("Aardvarks", "Badgers", 2, 1),  # 2 pts, 2/1 = 2.000, scored 2
+        ]
+    )
+
+    assert positions(table)[:2] == ["Zebras", "Aardvarks"]
+
+    zebras, aardvarks = table[0], table[1]
+    assert zebras.points == aardvarks.points
+    assert zebras.goal_average == aardvarks.goal_average
+    assert zebras.goals_for > aardvarks.goals_for
+
+    # Alphabetically, "Aardvarks" precedes "Zebras" -- so if this test passes,
+    # the sort is genuinely using goals scored and not falling back on the name.
+    assert sorted(["Zebras", "Aardvarks"])[0] == "Aardvarks"

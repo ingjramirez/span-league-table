@@ -44,19 +44,24 @@ class _Tally:
 
 
 def _ranking_key(entry: Tuple[str, _Tally]):
-    """The 1974/75 order: points, then goal average, then club name.
+    """The 1974/75 order: points, then goal average, then goals scored.
 
-    Points and the goal average both sort descending -- higher is better -- and
-    both are plain numbers, so they are simply negated. The club name breaks the
-    remaining ties ascending.
+    Wikipedia's 1974-75 Football League page states the classification rules for
+    this season beneath the First Division table:
 
-    The name is not a historical rule. The Football League had no tie-break
-    beyond goal average; clubs level on both genuinely shared the position. It is
-    here so the output is deterministic, and it is documented as such.
+        Rules for classification: 1) Points; 2) Goal average; 3) Goals scored
+
+    All three sort descending -- higher is better -- and all three are plain
+    numbers, so they are simply negated.
+
+    The club name is a fourth element and is NOT a historical rule. It exists so
+    that two clubs identical on all three real criteria come out in a stable
+    order rather than at the mercy of dict insertion, and it is documented as
+    such in README.md.
     """
     team, tally = entry
     band, ratio = goal_average(tally.goals_for, tally.goals_against).sort_key()
-    return (-tally.points, -band, -ratio, team)
+    return (-tally.points, -band, -ratio, -tally.goals_for, team)
 
 
 def build_table(matches: Iterable[Match]) -> List[Standing]:

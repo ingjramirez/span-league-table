@@ -126,12 +126,28 @@ goal average orders them 0.706 / 0.667 / 0.615.
 
 Both cases are locked down by tests in `tests/test_1974_75_season.py`.
 
-### No further tie-break
+### And a third rule: goals scored
 
-The Football League had none in 1974/75: clubs level on both points and goal average
-genuinely shared the position. The tool falls back to alphabetical order purely so the
-output is deterministic. That is a presentation choice, not a historical rule, and it is
-marked as such in the code.
+Clubs level on **both** points and goal average are separated by **goals scored**. The same
+[1974–75 Football League][1974-75] page states the classification rules beneath the First
+Division table:
+
+> Rules for classification: 1) Points; 2) Goal average; 3) Goals scored
+
+So the full 1974/75 order is: **points, then goal average, then goals scored.**
+
+We nearly shipped this wrong. An earlier version of this README asserted that the League had
+*no* third rule and that clubs level on points and goal average simply shared the position,
+and the code invented an alphabetical tie-break to fill the gap. That was false, and it was
+false about the very page cited two paragraphs above. It went unnoticed because in all three
+of our tables the two rules happen to agree — the only ties on points *and* goal average are
+Burnley/Newcastle and Birmingham/Wolverhampton in the 19 October table, and goals scored and
+alphabetical order put the same club first in both. A rule can be wrong and invisible at the
+same time; that is the whole lesson of this exercise, and it caught us three times.
+
+The club name remains as a **fourth** element, used only when two clubs are identical on all
+three real rules. That is a determinism choice, not history — without it the order would fall
+to dict insertion — and it is marked as such in the code.
 
 ## Goal average has two edge cases. Both are deliberate.
 
@@ -267,11 +283,14 @@ The rule is defended by `test_goal_average_and_goal_difference_disagree` and by 
 matchday-10 assertions, *not* by the archive comparisons. We found this out by mutating the
 sort to goal difference and watching two of the three outputs come out unchanged.
 
-(One further thing we do *not* claim: in the two cases where clubs tie on both points and
-goal average — Burnley/Newcastle on 1.000, Birmingham/Wolverhampton on 1.000 — our
-alphabetical fallback happens to agree with 11v11's order. But goals-scored would order both
-pairs the same way, so this data cannot tell us which rule 11v11 applies, and we do not
-pretend it does.)
+(The two clubs tied on both points and goal average in that table — Burnley/Newcastle on
+1.000, Birmingham/Wolverhampton on 1.000 — are ordered by 11v11 exactly as **goals scored**
+would order them, which is corroborating: it is the third rule Wikipedia documents, and the
+one we now implement. It is not *proof* that 11v11 applies that rule, since alphabetical
+order would coincidentally produce the same two pairs, but it is consistent with the source.
+For a while we ran an alphabetical tie-break here and told ourselves this data couldn't
+distinguish the two. It couldn't — but the rule was written down on a page we had already
+cited, and we should have looked instead of shrugging.)
 
 ## Tests
 
@@ -279,7 +298,7 @@ pretend it does.)
 pytest
 ```
 
-101 tests. The suite enforces **100% branch coverage** and fails below it; the only excluded
+102 tests. The suite enforces **100% branch coverage** and fails below it; the only excluded
 line in the codebase is the `if __name__ == "__main__":` process entry point, which cannot
 be exercised in-process.
 
@@ -304,6 +323,9 @@ The tests that actually protect this submission are:
 - `test_the_archive_tables_cannot_tell_the_two_rules_apart` — the limit of that validation,
   asserted so it cannot quietly be forgotten: both archive-verified tables come out identical
   under goal difference, so only the matchday-10 table can prove which rule we implemented.
+- `test_clubs_level_on_points_and_goal_average_are_separated_by_goals_scored` — the third rule,
+  with goals-scored and the old alphabetical fallback ordering the clubs **oppositely**, so it
+  cannot pass by coincidence either.
 - `test_averages_are_exact_and_do_not_collapse_under_float_rounding` — fails under a float
   implementation.
 - The goal-average edge cases, the CSV failure modes and exit codes, and a golden test
