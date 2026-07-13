@@ -68,6 +68,35 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _warn_about_near_duplicate_club_names(
+    matches: Sequence[Match], stderr: IO[str]
+) -> None:
+    """Flag club names that differ only by case.
+
+    'Arsenal' and 'ARSENAL' are almost certainly one club, and left alone they
+    become two rows with half a season each. We do not merge them -- the tool
+    refuses to guess what a name means, and two clubs really could differ only in
+    case -- but a silent split is exactly the kind of wrong table this warns
+    about elsewhere, so it does not pass unremarked.
+    """
+    names = {match.home_team for match in matches} | {
+        match.away_team for match in matches
+    }
+
+    by_fold: dict = {}
+    for name in names:
+        by_fold.setdefault(name.casefold(), []).append(name)
+
+    for variants in by_fold.values():
+        if len(variants) > 1:
+            spellings = ", ".join(repr(name) for name in sorted(variants))
+            print(
+                f"league-table: warning: {spellings} differ only by case and have "
+                "been counted as separate clubs",
+                file=stderr,
+            )
+
+
 def _warn_about_repeated_fixtures(matches: Sequence[Match], stderr: IO[str]) -> None:
     """Flag any pairing that appears more than once at the same ground.
 
@@ -188,6 +217,7 @@ def main(
         with _opened(args.input, "r", stdin) as source:
             matches = read_matches(source)
 
+        _warn_about_near_duplicate_club_names(matches, stderr)
         _warn_about_repeated_fixtures(matches, stderr)
 
         standings = build_table(matches)

@@ -74,6 +74,20 @@ numbers — either would silently put wrong goals in the table, which is worse t
 Input is decoded as `utf-8-sig`, so the byte-order mark Excel and Google Sheets write by
 default does not make the first column unreadable.
 
+Two things are *suspicious* rather than wrong, so they warn on stderr and still produce a
+table (exit 0):
+
+- **A repeated fixture.** The same pairing twice is the likeliest corruption in a results
+  feed — but some leagues genuinely play the same fixture twice at the same ground, and this
+  tool tabulates whatever league it is given. Every occurrence is counted, and said so.
+- **Club names differing only by case.** `Arsenal` and `ARSENAL` are one club in any league
+  that ever existed, and left alone they become two rows with half a season each. We do not
+  merge them — the tool does not guess what a name *means* — but a silent split is exactly
+  the confidently-wrong output everything else here exists to prevent.
+
+Both are deliberate: refuse what cannot be read, warn about what can be read but looks wrong,
+and never quietly produce a plausible table from bad data.
+
 ## The rules, and why they are not the modern ones
 
 This is the crux of the exercise. Two rules differ from the modern game, and both were
@@ -186,19 +200,17 @@ published mid-week with clubs on unequal games played all the time, and the 11v1
 cited below is exactly that. It is a reason to *lead* with the matchday table, not a reason
 the other one is wrong, which is why both are shipped.
 
-### Both cut-offs are shipped
+### All three readings are shipped
 
 Within the matchday reading there is one further wrinkle worth being honest about. Three
 round-9 fixtures were postponed and actually played months later — Leeds v Tottenham
 (4 Dec 1974), Middlesbrough v Leicester (10 Dec 1974) and Newcastle v Arsenal (23 Apr 1975).
 A "rounds 1–10" table therefore includes three results that were not on the pitch in
-September. So both readings ship:
+September.
 
-### All three readings are shipped
-
-Rather than argue the ambiguity and pick one in private, every reading is in the repo as an
-input/output pair. The same binary produces all three — only the input differs, which is the
-whole point of keeping the week out of the code.
+So rather than argue the ambiguity and pick one in private, every reading is in the repo as
+an input/output pair. The same binary produces all three — only the input differs, which is
+the whole point of keeping the week out of the code.
 
 | input | output | what it is |
 |---|---|---|
@@ -213,12 +225,12 @@ the time. We lead with it because "the 10th week" most naturally means ten round
 and because it is the table the archives reproduce — but a reviewer who reads the brief the
 other way will find their table here too, computed by the same code.
 
-### The calendar-week table is also the strongest evidence the tool is right
+### The calendar-week table validates the data — and, pointedly, not the rule
 
 The 19 October 1974 table is worth more than completeness. [11v11 publishes the table for
-that exact date][11v11-19oct], and — unusually — prints its own **goal average** column and
-orders the clubs by it. Our output reproduces it **exactly: all 22 rows, in the same order,
-with the same goal averages to three decimal places.**
+that exact date][11v11-19oct], and — unusually — prints its own **goal average** column.
+Our output reproduces it **exactly: all 22 rows, in the same order, with the same goal
+averages to three decimal places.**
 
 ```
 Pos  Team                P   W  D  L   F   A   GAvg  Pts
@@ -230,18 +242,36 @@ Pos  Team                P   W  D  L   F   A   GAvg  Pts
  18  Leicester City      12  3  4  5  16  18  0.889   10     <- 12 games
 ```
 
-That single comparison exercises everything at once — the match data, two points for a win,
-the goal-average *ratio*, the ordering, and clubs on unequal games played (six postponed
-fixtures leave Leicester on 12 and ten clubs on 13). Note Liverpool top the table on 19
-points from **thirteen** games while Manchester City have 19 from **fourteen**: separated by
-goal average, 2.625 to 1.267. If any part of the implementation were wrong, that table could
-not come out right. It is asserted row by row in `tests/test_1974_75_season.py`.
+That comparison validates the match data, the two-point rule, the goal-average *arithmetic*,
+and the handling of clubs on unequal games played (six postponed fixtures leave Leicester on
+12 and ten clubs on 13). Liverpool top it on 19 points from **thirteen** games while
+Manchester City have 19 from **fourteen** — an ordering only a ratio produces.
 
-(One thing we do *not* claim: in the two cases where clubs tie on both points and goal
-average — Burnley/Newcastle on 1.000, Birmingham/Wolverhampton on 1.000 — our alphabetical
-fallback happens to agree with 11v11's order. But goals-scored would order both pairs the
-same way, so this data cannot tell us which rule 11v11 applies, and we do not pretend it
-does.)
+**What it does not validate is the tie-break rule itself, and it would be dishonest to imply
+otherwise.** In this particular table goal average and goal difference never actually
+disagree: sort the same results by goal difference and the output is *byte-identical*. The
+same is true of the 28 September table. So both externally-verified tables check the data
+exhaustively and the sort not at all.
+
+The one table where the historical rule changes the answer is the matchday-10 reconstruction
+— where Middlesbrough and Liverpool swap — and that is precisely the table no archive
+publishes, so its ordering rests on our reading of the sources above rather than on a
+published table. That is the honest epistemic position:
+
+| | what it proves | what it doesn't |
+|---|---|---|
+| 11v11 comparisons (28 Sep, 19 Oct) | the data, the points, the arithmetic | nothing about goal average vs goal difference |
+| Matchday-10 table + unit tests | the historical rule changes real positions | — |
+
+The rule is defended by `test_goal_average_and_goal_difference_disagree` and by the
+matchday-10 assertions, *not* by the archive comparisons. We found this out by mutating the
+sort to goal difference and watching two of the three outputs come out unchanged.
+
+(One further thing we do *not* claim: in the two cases where clubs tie on both points and
+goal average — Burnley/Newcastle on 1.000, Birmingham/Wolverhampton on 1.000 — our
+alphabetical fallback happens to agree with 11v11's order. But goals-scored would order both
+pairs the same way, so this data cannot tell us which rule 11v11 applies, and we do not
+pretend it does.)
 
 ## Tests
 
@@ -249,7 +279,7 @@ does.)
 pytest
 ```
 
-99 tests. The suite enforces **100% branch coverage** and fails below it; the only excluded
+101 tests. The suite enforces **100% branch coverage** and fails below it; the only excluded
 line in the codebase is the `if __name__ == "__main__":` process entry point, which cannot
 be exercised in-process.
 
@@ -270,7 +300,10 @@ The tests that actually protect this submission are:
   thing, in the real season, on the real submitted table.
 - `test_the_tenth_calendar_week_table_matches_11v11s_published_table_exactly` — all 22 rows of
   a **published historical table**, reproduced exactly: same order, same goal averages, clubs
-  on unequal games played. The single strongest check in the repo.
+  on unequal games played. It validates the data, not the tie-break rule.
+- `test_the_archive_tables_cannot_tell_the_two_rules_apart` — the limit of that validation,
+  asserted so it cannot quietly be forgotten: both archive-verified tables come out identical
+  under goal difference, so only the matchday-10 table can prove which rule we implemented.
 - `test_averages_are_exact_and_do_not_collapse_under_float_rounding` — fails under a float
   implementation.
 - The goal-average edge cases, the CSV failure modes and exit codes, and a golden test

@@ -176,8 +176,9 @@ def test_the_committed_output_files_are_what_the_tool_produces_today():
 
 
 # --------------------------------------------------------------------------
-# The calendar reading, shipped so the ambiguity can be judged rather than
-# taken on trust -- and, as it happens, the strongest validation in the repo.
+# The calendar reading, shipped so the ambiguity can be judged rather than taken
+# on trust. It validates the data against a published table -- but NOT the
+# tie-break rule, for the reason spelled out at the bottom of this file.
 # --------------------------------------------------------------------------
 
 PLAYED_BY_19_OCT = DATA / "results_1974-75_played_by_1974-10-19.csv"
@@ -187,16 +188,19 @@ STANDINGS_AS_OF_19_OCT = DATA / "standings_1974-75_as_of_1974-10-19.csv"
 def test_the_tenth_calendar_week_table_matches_11v11s_published_table_exactly():
     """Our table for 19 October 1974, against the one 11v11 publishes.
 
-    This is the closest thing to a ground truth available: a historical table,
-    published by an archive, that prints its own goal-average column and orders
-    the clubs by it. Every row below was read from
+    A published historical table, read from
     https://www.11v11.com/league-tables/league-division-one/19-october-1974/
 
-    It exercises everything at once -- the match data, the two-points rule, the
-    goal-average ratio, the ordering, and the handling of clubs on unequal games
-    played (six postponed fixtures leave Leicester on 12 and ten clubs on 13).
+    This validates the match data, the two-points rule, the goal-average
+    arithmetic, and the handling of clubs on unequal games played (six postponed
+    fixtures leave Leicester on 12 and ten clubs on 13).
 
-    If any of that were wrong, this test could not pass.
+    It does NOT validate the tie-break rule, and it must not be mistaken for a
+    test that does. In this table goal average and goal difference never
+    disagree, so it passes just as happily with the modern rule implemented --
+    see test_the_archive_tables_cannot_tell_the_two_rules_apart below. The rule
+    is defended by test_goal_average_and_goal_difference_disagree and by the
+    matchday-10 assertions above, not by this.
     """
     published = [
         # team, P, W, D, L, GF, GA, GAvg, Pts
@@ -251,3 +255,45 @@ def test_the_committed_calendar_week_output_is_what_the_tool_produces_today():
 
     assert main([str(PLAYED_BY_19_OCT)], stdout=produced) == EXIT_OK
     assert produced.getvalue() == STANDINGS_AS_OF_19_OCT.read_text()
+
+
+def test_the_archive_tables_cannot_tell_the_two_rules_apart():
+    """The limit of the external validation, asserted so it cannot be forgotten.
+
+    It is tempting to present the 11v11 comparisons as proof that the historical
+    rule is implemented. They are not, and this test pins down exactly why: in
+    both archive-verified tables, ordering by goal average and ordering by goal
+    difference produce the SAME table. Only the matchday-10 table can tell the
+    two rules apart.
+
+    So if someone "modernises" the sort, these two datasets stay green and only
+    the matchday-10 tests go red. That is worth knowing, and worth writing down
+    where the next reader will find it.
+    """
+
+    def ordered_by_goal_difference(results):
+        """The same clubs, ranked by the MODERN rule instead."""
+        table = table_for(results)
+        return sorted(
+            (row["Team"] for row in table),
+            key=lambda team: (
+                -int(next(r["Points"] for r in table if r["Team"] == team)),
+                -(
+                    int(next(r["GoalsFor"] for r in table if r["Team"] == team))
+                    - int(next(r["GoalsAgainst"] for r in table if r["Team"] == team))
+                ),
+                team,
+            ),
+        )
+
+    def ours(results):
+        return [row["Team"] for row in table_for(results)]
+
+    # The two tables an archive can check for us: both rules agree, so neither
+    # comparison says anything at all about which rule we implemented.
+    assert ours(PLAYED_BY_19_OCT) == ordered_by_goal_difference(PLAYED_BY_19_OCT)
+    assert ours(PLAYED_BY_28_SEP) == ordered_by_goal_difference(PLAYED_BY_28_SEP)
+
+    # The submitted table is the one that discriminates -- and it is the one no
+    # archive publishes, which is precisely why the unit tests carry the weight.
+    assert ours(ROUNDS_1_TO_10) != ordered_by_goal_difference(ROUNDS_1_TO_10)

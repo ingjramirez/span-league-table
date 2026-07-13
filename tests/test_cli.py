@@ -370,3 +370,21 @@ def test_the_help_text_names_the_historical_rules():
     assert completed.returncode == 0
     assert "goal average" in completed.stdout
     assert "two points for a win" in completed.stdout
+
+
+def test_club_names_differing_only_by_case_are_warned_about():
+    """'Arsenal' and 'ARSENAL' are one club in every league that ever existed.
+
+    We do not merge them -- the tool refuses to guess what a name means -- but a
+    silent split would hand back a table with two half-Arsenals in it, which is
+    precisely the confidently-wrong output every other check here exists to
+    prevent.
+    """
+    code, out, err = run(
+        [], stdin=HEADER + "Arsenal,Chelsea,1,0\nARSENAL,Everton,2,0\n"
+    )
+
+    assert code == EXIT_OK
+    assert "differ only by case" in err
+    assert "'ARSENAL'" in err and "'Arsenal'" in err
+    assert len(out.splitlines()) == 5  # header + 4 clubs: the split still happened

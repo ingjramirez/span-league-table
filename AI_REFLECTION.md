@@ -40,9 +40,11 @@ doesn't know what a week is. It tabulates whatever file you give it, and the cut
 the data. So all three readings cost nothing to ship, and all three ship. A judgement call I
 could have got wrong became one I didn't have to make irreversibly.
 
-The calendar-week file turned out to be the most useful thing in the repo, because 11v11
-publishes the real table for that date with its own goal average column, and ours reproduces it
-exactly. That single comparison tests the data, the rules and the sort all at once.
+The calendar-week file also turned out to be useful beyond completeness: 11v11 publishes the
+real table for that date, and ours reproduces it exactly, which is about as good a check on the
+match data as you can get.
+
+Though not as good a check as I first claimed. See below.
 
 ## The part I'm least pleased about
 
@@ -68,3 +70,23 @@ So the lesson is smaller and more annoying than "verify things". A model's summa
 is not the source, and the more a claim flatters your argument, the more it deserves the click.
 The match data got that scrutiny and survived. My favourite sentence in the write-up didn't,
 and was wrong.
+
+And then, having written that paragraph, I did it again.
+
+I'd said the 11v11 comparison was the strongest check in the repo, that if any part of the
+implementation were wrong the table couldn't come out right. It sounded true. A reviewer tested
+it by rewriting the sort to use goal difference — the exact modern-rules mistake this whole
+exercise is built to catch — and regenerating everything. Two of the three tables came out
+byte-identical. In both of the tables an archive can check for me, the two rules happen to
+agree, so those comparisons validate the data thoroughly and the rule not at all. The only
+table where the historical rule changes anything is the one no archive publishes.
+
+I had it backwards, and I'd said so loudly, in the same document where I'd just finished
+explaining that flattering claims deserve the click. Twice, with the lesson written down in
+between.
+
+What I'd actually change about how I worked, then, is not "check sources" — I did check sources.
+It's that I never asked what my evidence would look like if I were wrong. The mutation test the
+reviewer ran took about a minute and would have told me on day one that my headline validation
+was blind to the thing it claimed to prove. It's now a test in the repo, asserting that those
+two tables *can't* tell the rules apart, so nobody rebuilds the same false confidence later.
