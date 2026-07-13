@@ -1,0 +1,32 @@
+[project]
+name = "league-table"
+version = "1.0.0"
+description = "League standing table for the English First Division, 1974/75 rules"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+league-table = "league_table.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=league_table --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+branch = true
+source = ["league_table"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100
+exclude_lines = [
+    # The process entry point cannot be exercised by an in-process test.
+    'if __name__ == "__main__":',
+]
